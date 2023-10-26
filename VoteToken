@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract VotingSystem is Ownable {
+    struct Proposal {
+        string title;
+        string description;
+        uint256 votesFor;
+        uint256 votesAgainst;
+        bool isActive;
+    }
+
+    struct Voter {
+        bool hasVoted;
+        bool inFavor;
+    }
+
+    IERC20 public votingToken;
+    Proposal[] public proposals;
+    mapping(address => Voter) public voters;
+
+    event ProposalCreated(uint256 proposalId, string title, string description);
+    event Voted(uint256 proposalId, bool inFavor);
+
+    constructor(address _votingToken) {
+        votingToken = IERC20(_votingToken);
+    }
+
+    function createProposal(string memory title, string memory description) public {
+        proposals.push(Proposal(title, description, 0, 0, true));
+        uint256 proposalId = proposals.length - 1;
+        emit ProposalCreated(proposalId, title, description);
+    }
+
+    function vote(uint256 proposalId, bool inFavor) public {
+        require(voters[msg.sender].hasVoted == false, "Already voted");
+        require(proposals[proposalId].isActive == true, "Proposal is not active");
+
+        voters[msg.sender].hasVoted = true;
+        voters[msg.sender].inFavor = inFavor;
+
+        if (inFavor) {
+            proposals[proposalId].votesFor += 1;
+        } else {
+            proposals[proposalId].votesAgainst += 1;
+        }
+
+        emit Voted(proposalId, inFavor);
+    }
+
+    function closeProposal(uint256 proposalId) public onlyOwner {
+        require(proposals[proposalId].isActive == true, "Proposal is not active");
+        proposals[proposalId].isActive = false;
+    }
+
+    function getProposalResult(uint256 proposalId) public view returns (int) {
+        require(proposals[proposalId].isActive == false, "Proposal is still active");
+        int result = int(proposals[proposalId].votesFor) - int(proposals[proposalId].votesAgainst);
+        return result;
+    }
+}
