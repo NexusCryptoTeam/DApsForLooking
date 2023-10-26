@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract LargeSmartContract {
+    struct Person {
+        string name;
+        uint256 age;
+        bool isAdult;
+    }
+
+    mapping(address => Person) public people;
+    address[] public peopleList;
+    mapping(bytes32 => uint256) public data;
+
+    event PersonAdded(address indexed person, string name, uint256 age);
+    event DataUpdated(bytes32 indexed key, uint256 value);
+
+    constructor() {}
+
+    function addPerson(string memory name, uint256 age) public {
+        require(age >= 18, "Must be an adult to add to the contract");
+        require(people[msg.sender].age == 0, "Person already exists");
+
+        people[msg.sender] = Person(name, age, true);
+        peopleList.push(msg.sender);
+
+        emit PersonAdded(msg.sender, name, age);
+    }
+
+    function updateData(bytes32 key, uint256 value) public {
+        data[key] = value;
+        emit DataUpdated(key, value);
+    }
+
+    function getPeopleCount() public view returns (uint256) {
+        return peopleList.length;
+    }
+
+    function getPersonData(address personAddress) public view returns (string memory name, uint256 age, bool isAdult) {
+        Person storage person = people[personAddress];
+        return (person.name, person.age, person.isAdult);
+    }
+}
