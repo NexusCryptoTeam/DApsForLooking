@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract DecentralizedExchange is Ownable {
+    struct Order {
+        address trader;
+        address token;
+        uint256 price;
+        uint256 amount;
+    }
+
+    mapping(address => mapping(address => uint256)) public tokensBalance;
+    mapping(address => uint256) public ethBalance;
+    mapping(address => Order[]) public buyOrders;
+    mapping(address => Order[]) public sellOrders;
+
+    event OrderCreated(address indexed trader, address indexed token, uint256 price, uint256 amount, bool isBuyOrder);
+
+    constructor() {}
+
+    function depositEther() public payable {
+        ethBalance[msg.sender] += msg.value;
+    }
+
+    function withdrawEther(uint256 amount) public {
+        require(ethBalance[msg.sender] >= amount, "Insufficient balance");
+        ethBalance[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
+
+    function depositToken(address token, uint256 amount) public {
+        require(IERC20(token).transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+        tokensBalance[msg.sender][token] += amount;
+    }
+
+    function withdrawToken(address token, uint256 amount) public {
+        require(tokensBalance[msg.sender][token] >= amount, "Insufficient balance");
+        tokensBalance[msg.sender][token] -= amount;
+        require(IERC20(token).transfer(msg.sender, amount), "Token transfer failed");
+    }
+
+    function createOrder(address token, uint256 price, uint256 amount, bool isBuyOrder) public {
+        require(amount > 0, "Amount must be greater than 0");
+        require(price > 0, "Price must be greater than 0");
+        require(isBuyOrder || ethBalance[msg.sender] >= price * amount, "Insufficient balance");
+
+        Order memory order = Order(msg.sender, token, price, amount);
+
+        if (isBuyOrder) {
+            require(tokensBalance[msg.sender][token] >= amount, "Insufficient balance");
+            buyOrders[token].push(order);
+        } else {
+            sellOrders[token].push(order);
+        }
+
+        emit OrderCreated(msg.sender, token, price, amount, isBuyOrder);
+    }
+
+    function executeOrder(address token, uint256 orderIndex, uint256 amount, bool isBuyOrder) public {
+        Order[] storage orders = isBuyOrder ? buyOrders[token] : sellOrders[token];
+        require(orderIndex < orders.length, "Invalid order index");
+        Order storage order = orders[orderIndex];
+
+        require(order.amount >= amount, "Order amount is insufficient");
+
+        uint256 orderValue = order.price * amount;
+
+        if (isBuyOrder) {
+            require(ethBalance[msg.sender] >= orderValue, "Insufficient balance");
+            ethBalance[msg.sender] -= orderValue;
+            ethBalance[order.trader] += orderValue;
+            tokensBalance[msg.sender][token] += amount;
+            tokensBalance[order.trader][token] -= amount;
+        } else {
+            require(tokensBalance[msg.sender][token] >= amount, "Insufficient balance");
+            tokensBalance[msg.sender][token] -= amount;
+            tokensBalance[order.trader][token] += amount;
+            ethBalance[msg.sender] += orderValue;
+            ethBalance[order.trader] -= orderValue;
+        }
+
+        // Remove the executed order
+        if (orderIndex < orders.length - 1) {
+            orders[orderIndex] = orders[orders.length - 1];
+        }
+        orders.pop();
+    }
+}
